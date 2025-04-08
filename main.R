@@ -5,4 +5,12 @@ library(lmerTest)# to get p-value estimations that are not part of the standard 
 
 
 load("DataRegression2025_unical.RData")
-str(RiceFarms)
+data=data.frame(RiceFarms)
+
+str(data)
+summary(data)
+View(data)
+which(is.na(data)) #non ci sono missing value.
+names(data)
+unique(Y$pphosph)
+table(Y$price)

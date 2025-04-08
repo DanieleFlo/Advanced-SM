@@ -1,0 +1,275 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Introduzione
+
+Librerie
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+library(lme4)
+library(tidyverse)
+library(RColorBrewer)
+library(lmerTest)
+library(gamlss)
+```
+
+# Descrizione del dataset
+```{r}
+load("DataRegression2025_unical.RData")
+data=data.frame(RiceFarms)
+attach(data)
+which(is.na(data)) #non ci sono missing value.
+head(data)
+```
+
+
+```{r}
+str(data)
+```
+
+```{r}
+names(data)
+```
+### Descrizioni variabili
+- id: identificativo univoco dell'azienda agricola.
+
+-1 CARATTERISTICHE DEL TERRENO: SUDDIVISE IN ETTARI COLTIVATI E PROPRIETA' DEL TERRENO
+
+-size: area totale coltivata a riso (in ettari).
+-status: stato della terra coltivata, che può essere:
+-owner: agricoltori proprietari o affittuari (non mezzadri).
+-share: mezzadri.
+-mixed: combinazione delle due categorie precedenti.
+
+
+Y$varieties
+varieties: tipo di varietà di riso coltivate:
+trad: varietà tradizionali.
+-high: varietà ad alta resa.
+mixed: combinazione delle due varietà.
+bimas: partecipazione al programma di intensificazione BIMAS:
+no: non partecipante.
+yes: partecipante.
+mixed: solo una parte del terreno è registrata nel programma.
+
+FATTORI DI INPUT PRODUTTIVI: COSTO DELLE MATERIE PRIME E TIPOLOGIA
+
+seed: quantità di semi utilizzati (kg).
+urea: quantità di urea utilizzata (kg).
+phosphate: quantità di fosfato utilizzata (kg).
+pesticide: costo dei pesticidi (in Rupiah).
+pseed: prezzo del seme (in Rupiah per kg).
+purea: prezzo dell'urea (in Rupiah per kg).
+pphosph: prezzo del fosfato (in Rupiah per kg).
+
+
+INPUT: COSTI DEL PERSONALE E ORE DI LAVORO
+hiredlabor: ore di lavoro salariato.
+famlabor: ore di lavoro familiare.
+totlabor: totale ore di lavoro (escludendo il raccolto).
+wage: salario della manodopera (in Rupiah per ora).
+
+PRODUZIONE LORDA E NETTA 
+goutput: produzione lorda di riso (kg).
+noutput: produzione netta di riso, calcolata sottraendo il costo del raccolto dalla produzione lorda.
+price: prezzo del riso grezzo (in Rupiah per kg).
+
+
+AREE GEOGRAFICHE IN CUI OPERANO LE AZIENDE:
+region: area geografica di appartenenza dell’azienda agricola, tra:
+wargabinangun, langan, gunungwangi, malausma, sukaambit, ciwangi.
+
+
+# Analisi
+```{r}
+ggplot(data, aes(x = price)) +
+  geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribuzione dei prezzi")
+```
+
+```{r}
+sort(unique(data$price))
+```
+
+```{r}
+model.1<-lmer(price~1 + pseed + purea + wage + (1|id), data=data)
+summary(model.1)
+```
+
+```{r}
+print("-----Model 2-----")
+model.2<-lmer(price~1 + pseed + purea + wage +varieties+ (1|id), data=data)
+summary(model.2)
+ranova(model.2)
+```
+```{r}
+print("-----Model 3-----")
+model.3<-lmer(price~1 + pseed + purea + wage +varieties+bimas+ (1|id), data=data)
+summary(model.3)
+ranova(model.3)
+```
+
+```{r}
+regioni <- unique(data$region)
+regione_mappa <- setNames(seq_along(regioni), regioni)
+
+data_2 <- data %>%
+  mutate(Regione = recode(region, !!!regione_mappa))
+df
+```
+
+```{r}
+print("-----Model 3 BIS-----")
+model.3B<-lmer(price~1 + pseed + purea + wage +varieties+bimas+ (1|Regione), data=data_2)
+summary(model.3B)
+ranova(model.3B)
+```
+```{r}
+table(varieties, region)
+```
+```{r}
+print("-----Model 4 BIS-----")
+model.4B<-lmer(price~1 + pseed + purea + wage +bimas+size+ (1|Regione), data=data_2)
+summary(model.4B)
+```
+
+```{r}
+print("-----Model 5 BIS-----")
+model.5B<-lmer(price~1 + pseed + purea + wage + bimas + pesticide + urea + phosphate + (1|Regione), data=data_2)
+summary(model.5B)
+ranova(model.5B)
+```
+
+```{r}
+data_scale <- data_2 %>% 
+  mutate(across(where(is.numeric), scale))
+
+print("-----Model 5 BIS 2-----")
+model.5B2<-lmer(price~ 0+ pseed + purea + urea  + wage +bimas+pesticide + phosphate + (1|Regione), data=data_scale)
+summary(model.5B2)
+ranova(model.5B2)
+```
+
+```{r}
+print("-----Model 6 B-----")
+model.6B<-lmer(price~ 0+ pseed + purea + urea  + wage + pesticide + phosphate + (1|Regione), data=data_scale)
+summary(model.6B)
+ranova(model.6B)
+```
+
+```{r}
+res=residuals(model.6B)
+ggplot(data.frame(res), aes(x = res)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
+```
+```{r}
+par(mfrow=c(1,2))
+
+qqnorm(res)
+qqline(res, col = "red")
+
+shapiro.test(res)
+ 
+```
+
+```{r}
+mod_ga<- gamlss(price~ 1+ pseed + purea + wage + pesticide + goutput + noutput + (1|Regione), family = GA, data =data_2) # Attenzione su data_2 non data scale
+summary(mod_ga)
+res2=residuals(mod_ga)
+```
+```{r}
+data_2 %>%
+  group_by(Regione) %>%
+  summarise(n_id_unici = n_distinct(id))
+```
+
+```{r}
+res2=residuals(mod_ga)
+ggplot(data.frame(res2), aes(x = res2)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
+```
+```{r}
+par(mfrow=c(1,2))
+
+qqnorm(res2)
+qqline(res2, col = "red")
+
+shapiro.test(res2)
+```
+```{r}
+mod_ga.2<- gamlss(price~ 1+ pseed + goutput + noutput + varieties + purea + pphosph + bimas + (1|Regione), family = GA, data =data_2) # Attenzione su data_2 non data scale
+summary(mod_ga.2)
+res2=residuals(mod_ga.2)
+```
+
+
+```{r}
+res3=residuals(mod_ga.2)
+ggplot(data.frame(res3), aes(x = res3)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
+```
+
+```{r}
+par(mfrow=c(1,2))
+
+qqnorm(res3)
+qqline(res3, col = "red")
+
+shapiro.test(res3)
+```
+
+
+# Consideraizoni
+
+```{r}
+# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
+ggplot(data, aes(x = wage, y = price, color = region)) +
+  geom_point() +                         # Aggiunge i punti del grafico
+  labs(
+    x = "Wage",
+    y = "Price",
+    title = "Scatter Plot: Wage vs Price con fit lineare per ogni Region"
+  ) +
+  theme_minimal()  # Opzionale, per un tema più pulito
+```
+```{r}
+# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
+ggplot(data, aes(x = pseed, y = price, color = region)) +
+  geom_point() +                         # Aggiunge i punti del grafico
+  geom_smooth(method = "lm", se = FALSE) + # Aggiunge la linea di regressione lineare per ogni region
+  labs(
+    x = "pseed",
+    y = "Price",
+    title = "Scatter Plot: pseed vs Price con fit lineare per ogni Region"
+  ) +
+  theme_minimal()  # Opzionale, per un tema più pulito
+```
+
+```{r}
+# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
+ggplot(data, aes(x = purea, y = price, color = region)) +
+  geom_point() +                         # Aggiunge i punti del grafico
+  labs(
+    x = "purea",
+    y = "Price",
+    title = "Scatter Plot: purea vs Price con fit lineare per ogni Region"
+  ) +
+  theme_minimal()  # Opzionale, per un tema più pulito
+```
+```{r}
+# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
+ggplot(data, aes(x = pphosph, y = price, color = region)) +
+  geom_point() +                         # Aggiunge i punti del grafico
+  labs(
+    x = "pphosph",
+    y = "Price",
+    title = "Scatter Plot: pphosph vs Price con fit lineare per ogni Region"
+  ) +
+  theme_minimal()  # Opzionale, per un tema più pulito
+```
+
