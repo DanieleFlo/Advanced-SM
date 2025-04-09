@@ -18,6 +18,7 @@ library(gamlss)
 ```{r}
 load("DataRegression2025_unical.RData")
 data=data.frame(RiceFarms)
+data$id = as.factor(data$id)
 attach(data)
 which(is.na(data)) #non ci sono missing value.
 head(data)
@@ -88,6 +89,24 @@ ggplot(data, aes(x = price)) +
   theme_minimal() +
   labs(title = "Distribuzione dei prezzi")
 ```
+```{r}
+data_rich <- data %>% 
+  filter(region %in% c("gunungwangi", "malausma", "ciwangi"))
+
+ggplot(data_rich, aes(x = price)) +
+  geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribuzione dei prezzi")
+```
+```{r}
+data_p = subset(data, !region %in% c("gunungwangi", "malausma", "ciwangi"))
+
+ggplot(data_p, aes(x = price)) +
+  geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribuzione dei prezzi")
+```
+
 
 ```{r}
 sort(unique(data$price))
@@ -117,12 +136,13 @@ regione_mappa <- setNames(seq_along(regioni), regioni)
 
 data_2 <- data %>%
   mutate(Regione = recode(region, !!!regione_mappa))
-df
+data_2$Regione = as.factor(data_2$Regione)
+head(data_2)
 ```
 
 ```{r}
 print("-----Model 3 BIS-----")
-model.3B<-lmer(price~1 + pseed + purea + wage +varieties+bimas+ (1|Regione), data=data_2)
+model.3B<-lmer(price~1 + pseed + purea + wage +varieties+bimas+ (1|Regione)+(1|id), data=data_2)
 summary(model.3B)
 ranova(model.3B)
 ```
@@ -201,7 +221,17 @@ qqline(res2, col = "red")
 shapiro.test(res2)
 ```
 ```{r}
-mod_ga.2<- gamlss(price~ 1+ pseed + goutput + noutput + varieties + purea + pphosph + bimas + (1|Regione), family = GA, data =data_2) # Attenzione su data_2 non data scale
+m = 80
+
+# Crea la variabile categoriale usando cut()
+data_2$wage_cat=  cut(
+  data_2$wage,
+  breaks = c(-Inf, m, Inf),
+  labels = c(0, 1),
+  right = FALSE  # In questo caso, l'intervallo non include il valore di soglia; se vuoi includere thresh nel secondo gruppo, rimuovi questo parametro o impostalo a TRUE
+)
+
+mod_ga.2<- gamlss(price~ 1+ pseed + goutput + noutput + varieties  + pphosph + bimas + wage_cat + (1|Regione), family = GA, data =data_2) # Attenzione su data_2 non data scale
 summary(mod_ga.2)
 res2=residuals(mod_ga.2)
 ```
@@ -223,6 +253,73 @@ qqline(res3, col = "red")
 shapiro.test(res3)
 ```
 
+```{r}
+m = 80
+
+# Crea la variabile categoriale usando cut()
+data_2$wage_cat=  cut(
+  data_2$wage,
+  breaks = c(-Inf, m, Inf),
+  labels = c(0, 1),
+  right = FALSE  # In questo caso, l'intervallo non include il valore di soglia; se vuoi includere thresh nel secondo gruppo, rimuovi questo parametro o impostalo a TRUE
+)
+
+#mod_ga.3<- gamlss(price~ 1+ pseed  + pphosph + bimas + wage_cat + region + (1|id), family = GA, data =data_2) # Attenzione su data_2 non data scale
+mod_ga.3<- lmer(price~ 1+  pphosph + bimas + wage_cat + (1+pseed|region),  data =data_2) # Attenzione su data_2 non data scale
+summary(mod_ga.3)
+res2=residuals(mod_ga.3)
+```
+
+```{r}
+res4=residuals(mod_ga.3)
+ggplot(data.frame(res4), aes(x = res4)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
+```
+```{r}
+par(mfrow=c(1,2))
+
+qqnorm(res4)
+qqline(res4, col = "red")
+
+shapiro.test(res4)
+```
+
+
+```{r}
+#mod_st3 <- gamlss(price ~ 1 + pseed + pphosph + bimas + wage_cat + status ,random = ~1 | region,family = GA, data = data_2)
+#mod_st4 <- gamlss(price ~ 1 + pseed + pphosph + bimas + wage_cat + status ,random = ~1 | region,family = LOGNO, data = data_2)
+#mod_st3 <- gamlss(price ~ 1 + pseed + pphosph + bimas ,random = ~1 | region,family = GA, data = data_2)
+#mod_st4 <- gamlss(price ~ 1 + pseed + pphosph + bimas ,random = ~1 | region,family = LOGNO, data = data_2)
+mod_ga <- gamlss(price ~ 1 + pseed + goutput + noutput  + pphosph + bimas ,random = ~1 | region,family = GA, data = data_2)
+mod_ga_2 <- gamlss(price ~ 1 + pseed + goutput + noutput  + pphosph ,random = ~1 | region,family = GA, data = data_2)
+AIC(mod_ga,mod_ga_2)
+mod_logno <- gamlss(price ~ 1 + pseed + goutput + noutput  + pphosph + bimas ,random = ~1 | region,family = LOGNO, data = data_2)
+a=AIC(mod_ga,mod_logno)
+b=BIC(mod_ga,mod_logno)
+plot(mod_ga, which = 1, main = "Gamma - Residui normalizzati")
+plot(mod_logno, which = 1, main = "LOGNO - Residui normalizzati")
+cbind(a[2],b[2])
+print("mod_ga")
+summary(mod_ga)
+print("mod_logno")
+summary(mod_logno)
+```
+
+```{r}
+res5=residuals(mod_ga)
+ggplot(data.frame(res5), aes(x = res5)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
+```
+```{r}
+par(mfrow=c(1,2))
+
+qqnorm(res5)
+qqline(res5, col = "red")
+
+shapiro.test(res5)
+```
 
 # Consideraizoni
 
@@ -237,6 +334,19 @@ ggplot(data, aes(x = wage, y = price, color = region)) +
   ) +
   theme_minimal()  # Opzionale, per un tema più pulito
 ```
+```{r}
+# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
+ggplot(data, aes(x = pseed, y = price, group = id, color = region)) +
+  geom_point() +                         # Aggiunge i punti del grafico
+  geom_smooth(method = "lm", se = FALSE) + # Aggiunge la linea di regressione lineare per ogni region
+  labs(
+    x = "pseed",
+    y = "Price",
+    title = "Scatter Plot: pseed vs Price con fit lineare per ogni Region"
+  ) +
+  theme_minimal()  # Opzionale, per un tema più pulito
+```
+
 ```{r}
 # Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
 ggplot(data, aes(x = pseed, y = price, color = region)) +
@@ -270,6 +380,32 @@ ggplot(data, aes(x = pphosph, y = price, color = region)) +
     y = "Price",
     title = "Scatter Plot: pphosph vs Price con fit lineare per ogni Region"
   ) +
+  theme_minimal()  # Opzionale, per un tema più pulito
+```
+
+```{r}
+# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
+ggplot(data, aes(x = size, y = price, color = region)) +
+  geom_point() +                         # Aggiunge i punti del grafico
+  labs(
+    x = "size",
+    y = "Price",
+    title = "Scatter Plot: size vs Price con fit lineare per ogni Region"
+  ) +
+  theme_minimal()  # Opzionale, per un tema più pulito
+```
+
+```{r}
+# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
+ggplot(data, aes(x = seed, y = size, color = varieties)) +
+  geom_point() +                         # Aggiunge i punti del grafico
+  labs(
+    x = "seed",
+    y = "size",
+    title = "Scatter Plot: seed vs size con fit lineare per ogni Region"
+  ) +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlim(0, 350) + 
   theme_minimal()  # Opzionale, per un tema più pulito
 ```
 
