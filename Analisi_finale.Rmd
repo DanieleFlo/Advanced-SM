@@ -7,34 +7,36 @@ output:
 
 # Introduzione
 
-Librerie
+
+Di seguito riportiamo la lista delle librerie utilizzate nell'elaborazione del dataset.
 ```{r echo=TRUE, warning=FALSE, message=FALSE}
 library(lme4)
 library(tidyverse)
 library(RColorBrewer)
 library(lmerTest)
 library(gamlss)
+library(ggcorrplot)
+library(fitdistrplus)
 ```
 
 
-# Descrizione del dataset
-```{r}
+# Descrizione e caricamento del dataset
+
+Il dataset RiceFarms è stato iportato attaverso il seguente codice e inoltre vengono presentate le prime 5 righe del dataset:
+```{r, warning=FALSE}
 load("DataRegression2025_unical.RData")
 data=data.frame(RiceFarms)
-data$id = as.factor(data$id)
+# Trasformiao la varaiblie in fattore in modo da avere una rappresentazione
+# corretta del dataset
+data$id = as.factor(data$id) 
 attach(data)
-which(is.na(data)) #non ci sono missing value.
 head(data)
 ```
 
+Prima dell'analisi è stata utilizzata la funzione $which(is.na(data))$ per vedere se ci fossero eventuali valori mancanti. Il dataset non presenta valori mancanti. Di seguito possiamo ossere il tipo di variabili prensti nel dataset:
 
 ```{r}
 str(data)
-```
-
-
-```{r}
-names(data)
 ```
 
 ### Descrizioni variabili
@@ -86,9 +88,21 @@ Vediamo una breve descrizione delle variabili presenti nel dataset:
     - malausma
     - sukaambit
     - ciwangi
-    
+
+
+
 # Analisi preliminare
 
+In questo paragrafo analizziamo le variabili presenti nel dataset. Questa analisi ci permette di comprendere meglio la distribuzione dei dati e di valutare il loro andamento rispetto alla variabile target (price), ovvero il prezzo, fondamentale per la costruzione del nostro modello.
+
+Attraverso la funzione summary possiamo osservare che il dataset è di tipo multilivello. In quanto, i dati relativi a ciascuna azienda sono stati osservati su diversi cicli di produzione. Dalla variabile price possiamo osservare come questi presentino un'asimmetria positiva con una coda molto lunga, lasciando intendere una forte variabilità della distribuzione.
+```{r}
+summary(data)
+print(paste('Deviazione standard di price:', sd(price)))
+```
+
+
+Nel seguente grafico è riporto l'instogramma della variabile price. Questo ci suggerisce il tipo distribuzione che potrebbe assumere la variabile prezzo. Tuttavia, questa non sembra ben definita dato che i valori sembrano concentrarsi intorno a due valori distinti di prezzo.
 ```{r}
 ggplot(data, aes(x = price)) +
   geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
@@ -97,137 +111,103 @@ ggplot(data, aes(x = price)) +
 ```
 
 ```{r}
-data_rich <- data %>% 
-  filter(region %in% c("gunungwangi", "malausma", "ciwangi"))
-
-ggplot(data_rich, aes(x = price)) +
-  geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
-  theme_minimal() +
-  labs(title = "Distribuzione dei prezzi")
+# Fitting diretto alla lognormale
+fit <- fitdist(price, "lnorm")
+#fit <- fitdist(price*goutput, "gamma")
+ 
+# Mostra i parametri
+summary(fit)
+plot(fit)
 ```
 
-
-
+Riportiamo di seguito la matrice di correlazione fra le variabili contenute nel dataset. Essendo presenti numerose colonne, questa matrice offre una visione chiara delle potenziali relazioni esistenti tra di esse. Si può notare come molte variabili siano fortemente correlate tra loro, e non solo con la variabile price. Gran parte di queste correlazioni risultano di facile interpretazione, come nel caso delle variabili goutput e noutput, che indicano rispettivamente la produzione lorda di riso in kg e la produzione netta, calcolata sottraendo il costo del raccolto dalla produzione lorda.
 ```{r}
-data_p = subset(data, !region %in% c("gunungwangi", "malausma", "ciwangi"))
-
-ggplot(data_p, aes(x = price)) +
-  geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
-  theme_minimal() +
-  labs(title = "Distribuzione dei prezzi")
+matrix_corrplot = round(cor(select_if(data, is.numeric), method="pearson"),4)
+ggcorrplot(matrix_corrplot, hc.order=T, type="lower", lab=T, lab_size = 2.7)
 ```
+
+Nel grafico riportiamo il valore della variabile price (sull'asse delle ordinate) in funzione del salario orario della manodopera (sull'asse delle ascisse), colorando i punti in base alla regione di appartenenza. L'obiettivo era indagare se esistesse una correlazione tra il prezzo e il salario dei lavoratori, variabile al variare delle regioni. Dal grafico emerge la presenza di due gruppi distinti: in uno sembrano concentrarsi salari e prezzi elevati, mentre nell'altro salari e prezzi risultano nettamente inferiori. È importante precisare che, dal dataset non si riesce a motivare la presenza di questi due gruppi così distinti.
+
 ```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
 ggplot(data, aes(x = wage, y = price, color = region)) +
-  geom_point() +                         # Aggiunge i punti del grafico
+  geom_point() +
   labs(
     x = "Wage",
     y = "Price",
-    title = "Scatter Plot: Wage vs Price con fit lineare per ogni Region"
+    title = "Scatter Plot: Wage vs Price"
   ) +
-  theme_minimal()  # Opzionale, per un tema più pulito
+  theme_minimal()
 ```
 
+Nel grafico osserviamo la relazione tra il prezzo del riso (asse delle ordinate) e il prezzo dei semi (asse delle ascisse). I dati sono stati raggruppati per id e suddivisi per regione, evidenziati da colori differenti in base alla regione, e per ciascun gruppo è stata tracciata una retta di regressione lineare. Da tale analisi emerge che, per ogni variazione unitaria del prezzo dei semi, il corrispondente cambiamento nel prezzo del riso varia a seconda della regione di appartenenza.
 ```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
 ggplot(data, aes(x = pseed, y = price, group = id, color = region)) +
-  geom_point() +                         # Aggiunge i punti del grafico
-  geom_smooth(method = "lm", se = FALSE) + # Aggiunge la linea di regressione lineare per ogni region
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
   labs(
     x = "pseed",
     y = "Price",
     title = "Scatter Plot: pseed vs Price con fit lineare per ogni Region"
   ) +
-  theme_minimal()  # Opzionale, per un tema più pulito
+  theme_minimal()
 ```
 
+Nei grafici seguenti analizziamo se, nelle diverse regioni, vengano coltivate le stesse varietà di riso e in quale misura. Questa analisi risulta particolarmente interessante poiché varietà differenti di riso sono associate a prezzi diversi. Dal grafico si evince che vi sia molta differenza fra le regioni in termini di varietà di riso coltivate e di prezzo a cui queste vengono vendute. 
 ```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
-ggplot(data, aes(x = pseed, y = price, color = region)) +
-  geom_point() +                         # Aggiunge i punti del grafico
-  geom_smooth(method = "lm", se = FALSE) + # Aggiunge la linea di regressione lineare per ogni region
-  labs(
-    x = "pseed",
-    y = "Price",
-    title = "Scatter Plot: pseed vs Price con fit lineare per ogni Region"
-  ) +
-  theme_minimal()  # Opzionale, per un tema più pulito
+ggplot(data, aes(x = varieties, y = price, fill = varieties)) +
+  geom_boxplot() +
+  # Facet per regione, scales="free" permette ad ogni grafico 
+  # di avere le proprie scale
+  facet_wrap(~ region, scales = "free") +  
+  labs(title = "Boxplot dei Prezzi per Varietà per Regione",
+       x = "Varietà", y = "Prezzo") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Ripristino il layout di default
+par(mfrow = c(1, 1))
 ```
 
+In questi due grafici si evince l'assenza di una correlazione sia tra la quantità di semi utilizzata e il prezzo del riso, sia tra la dimensione del campo di coltivazione e il prezzo del riso.
 ```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
-ggplot(data, aes(x = purea, y = price, color = region)) +
-  geom_point() +                         # Aggiunge i punti del grafico
-  labs(
-    x = "purea",
-    y = "Price",
-    title = "Scatter Plot: purea vs Price con fit lineare per ogni Region"
-  ) +
-  theme_minimal()  # Opzionale, per un tema più pulito
-```
-
-
-```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
-ggplot(data, aes(x = pphosph, y = price, color = region)) +
-  geom_point() +                         # Aggiunge i punti del grafico
-  labs(
-    x = "pphosph",
-    y = "Price",
-    title = "Scatter Plot: pphosph vs Price con fit lineare per ogni Region"
-  ) +
-  theme_minimal()  # Opzionale, per un tema più pulito
-```
-
-```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
 ggplot(data, aes(x = size, y = price, color = region)) +
-  geom_point() +                         # Aggiunge i punti del grafico
+  geom_point() +
   labs(
     x = "size",
     y = "Price",
     title = "Scatter Plot: size vs Price con fit lineare per ogni Region"
   ) +
-  theme_minimal()  # Opzionale, per un tema più pulito
-```
+  theme_minimal()
 
-```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
 ggplot(data, aes(x = seed, y = price, color = varieties)) +
-  geom_point() +                         # Aggiunge i punti del grafico
+  geom_point() +
   labs(
     x = "seed",
     y = "Price",
     title = "Scatter Plot: seed vs Price con fit lineare per ogni Region"
   ) +
-  theme_minimal()  # Opzionale, per un tema più pulito
+  theme_minimal()
 ```
 
-
-```{r}
-# Supponendo che il tuo dataset sia salvato in un oggetto chiamato 'dataset'
-ggplot(data, aes(x = seed, y = size, color = varieties)) +
-  geom_point() +                         # Aggiunge i punti del grafico
-  labs(
-    x = "seed",
-    y = "size",
-    title = "Scatter Plot: seed vs size con fit lineare per ogni Region"
-  ) +
-  geom_smooth(method = "lm", se = FALSE) +
-  xlim(0, 350) + 
-  theme_minimal()  # Opzionale, per un tema più pulito
-```
 # Analisi
 
 ## Effetti casuali sulla variabile ID
+
+Terminata l'esplorazione del dataset, ci siamo concentrati sul capire quali fossero i fattori più significativi nella determinazione del prezzo del riso per le diverse aziende. In particolare si è utilizzato un modello di regressione lineare a effetti casuali. In questo modello l'attribuzione degli effetti casuali è stata legata alle diverse aziende distinte per ID. Inoltre, per semplicità inizialmente si sono utilizzate solo alcune variabili quali: pseed, purea e wage.
+
 ```{r}
 model.1<-lmer(price~1 + pseed + purea + wage + (1|id), data=data)
 summary(model.1)
 ```
+Si può notare che nel primo modello le variabili inserite risultino significative tranne per l'intercetta. In quanto sia un prezzo negativo non risulta ragionevole, sia il suo valore di p-value risulta troppo elevato.
+
+Nel blocco di codice seguente sono stati implementati due modelli, entrambi senza intercetta, in linea con le considerazioni precedenti. In particolare, sono state aggiunte ulteriori variabili, tra cui la varieties. Poiché quest'ultima è di tipo categorico, è stato eseguito un test AIC per valutare se la sua inclusione migliorasse il modello o meno. Il test ha evidenziato un miglioramento con la presenza della variabile. Tuttavia, nel summary si osserva che il p-value associato agli effetti casuali è molto elevato, indicando che tali effetti non sono statisticamente significativi e dunque da escludere.
 
 ```{r}
 print("-----Model 2-----")
-model.2<-lmer(price~1 + pseed + purea + wage +varieties+bimas+ (1|id), data=data)
+model.2<-lmer(price~0 + pseed + purea + wage +varieties + bimas + (1|id), data=data)
+model.2B<-lmer(price~0 + pseed + purea + wage + bimas + (1|id), data=data)
+AIC(model.2, model.2B)
 summary(model.2)
 ranova(model.2)
 ```
@@ -268,6 +248,8 @@ ggplot(data.frame(res), aes(x = res)) +
   labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
 ```
 
+
+
 ```{r}
 par(mfrow=c(1,2))
 
@@ -298,6 +280,8 @@ qqline(res_ga, col = "red")
 
 shapiro.test(res_ga)
 ```
+
+
 
 ```{r}
 mod_logno <- gamlss(price ~ 1 + pseed + goutput + noutput  + pphosph + varieties + bimas, random = ~1 | region,family = LOGNO, data = data_2)
@@ -331,6 +315,8 @@ qqline(res_logno, col = "red")
 
 shapiro.test(res_logno)
 ```
+
+
 
 # Conclusioni
 
