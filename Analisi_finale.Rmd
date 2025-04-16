@@ -1,11 +1,13 @@
 ---
-title: "Analisi_finale"
+title: "Analisi dati longitudinali (DataRegression2025_unical-RiceFarms)"
+author: "Roberto Cerminara, Daniele Florio, Lorenzo Piattoli"
 output:
   pdf_document: default
   html_document: default
 ---
 
 # Introduzione
+Il presente lavoro analizza il dataset RiceFarms, composto da informazioni relative alle aziende agricole impegnate nella coltivazione del riso. L'obiettivo principale consiste nell'individuare i fattori determinanti del prezzo del riso, tenendo conto di variabili quantitative (come l'area coltivata, la produzione lorda e netta, e dei relativi costi di produzione) e qualitative (ad esempio, il tipo di varietà coltivate e la partecipazione a programmi di intensificazione). Inizialmente, è stata condotta un'analisi esplorativa per valutare la distribuzione delle variabili e identificare eventuali problematiche, come la presenza di asimmetria nel prezzo e correlazioni tra le diverse variabili. Successivamente, sono stati stimati diversi modelli di regressione con diverse distribuzione di probabilità, che introducono componenti casuali per modellare la variabilità specifica, sia a livello di azienda (identificata da un ID) sia a livello appartenenza regionale. Infine, la scelta di utilizzare una distribuzione log-normale per la variabile di risposta, insieme alla valutazione dei criteri di bontà del fit (come l’AIC), ha permesso di identificare un modello più adeguato per il nostro obiettivo.
 
 
 Di seguito riportiamo la lista delle librerie utilizzate nell'elaborazione del dataset.
@@ -22,7 +24,7 @@ library(fitdistrplus)
 
 # Descrizione e caricamento del dataset
 
-Il dataset RiceFarms è stato iportato attaverso il seguente codice e inoltre vengono presentate le prime 5 righe del dataset:
+Il dataset RiceFarms è stato importato attraverso il seguente codice e inoltre vengono presentate le prime 5 righe del dataset:
 ```{r, warning=FALSE}
 load("DataRegression2025_unical.RData")
 data=data.frame(RiceFarms)
@@ -35,7 +37,7 @@ head(data)
 
 Prima dell'analisi è stata utilizzata la funzione $which(is.na(data))$ per vedere se ci fossero eventuali valori mancanti. Il dataset non presenta valori mancanti. Di seguito possiamo ossere il tipo di variabili prensti nel dataset:
 
-```{r}
+```{r, warning=FALSE}
 str(data)
 ```
 
@@ -81,7 +83,7 @@ Vediamo una breve descrizione delle variabili presenti nel dataset:
   - price: prezzo del riso grezzo (in Rupiah per kg).
 
 - AREE GEOGRAFICHE IN CUI OPERANO LE AZIENDE:
-  - region: area geografica di appartenenza dell’azienda agricola, tra:
+  - region: area geografica di appartenenza dell'azienda agricola, tra:
     - wargabinangun
     - langan
     - gunungwangi
@@ -96,39 +98,29 @@ Vediamo una breve descrizione delle variabili presenti nel dataset:
 In questo paragrafo analizziamo le variabili presenti nel dataset. Questa analisi ci permette di comprendere meglio la distribuzione dei dati e di valutare il loro andamento rispetto alla variabile target (price), ovvero il prezzo, fondamentale per la costruzione del nostro modello.
 
 Attraverso la funzione summary possiamo osservare che il dataset è di tipo multilivello. In quanto, i dati relativi a ciascuna azienda sono stati osservati su diversi cicli di produzione. Dalla variabile price possiamo osservare come questi presentino un'asimmetria positiva con una coda molto lunga, lasciando intendere una forte variabilità della distribuzione.
-```{r}
+```{r, warning=FALSE}
 summary(data)
 print(paste('Deviazione standard di price:', sd(price)))
 ```
 
 
-Nel seguente grafico è riporto l'instogramma della variabile price. Questo ci suggerisce il tipo distribuzione che potrebbe assumere la variabile prezzo. Tuttavia, questa non sembra ben definita dato che i valori sembrano concentrarsi intorno a due valori distinti di prezzo.
-```{r}
+Nel seguente grafico è riporto l'istogramma della variabile price. Questo ci suggerisce il tipo distribuzione che potrebbe assumere la variabile prezzo. Tuttavia, questa non sembra ben definita dato che i valori sembrano concentrarsi intorno a due valori distinti di prezzo.
+```{r, warning=FALSE}
 ggplot(data, aes(x = price)) +
   geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
   theme_minimal() +
   labs(title = "Distribuzione dei prezzi")
 ```
 
-```{r}
-# Fitting diretto alla lognormale
-fit <- fitdist(price, "lnorm")
-#fit <- fitdist(price*goutput, "gamma")
- 
-# Mostra i parametri
-summary(fit)
-plot(fit)
-```
-
 Riportiamo di seguito la matrice di correlazione fra le variabili contenute nel dataset. Essendo presenti numerose colonne, questa matrice offre una visione chiara delle potenziali relazioni esistenti tra di esse. Si può notare come molte variabili siano fortemente correlate tra loro, e non solo con la variabile price. Gran parte di queste correlazioni risultano di facile interpretazione, come nel caso delle variabili goutput e noutput, che indicano rispettivamente la produzione lorda di riso in kg e la produzione netta, calcolata sottraendo il costo del raccolto dalla produzione lorda.
-```{r}
+```{r, warning=FALSE}
 matrix_corrplot = round(cor(select_if(data, is.numeric), method="pearson"),4)
 ggcorrplot(matrix_corrplot, hc.order=T, type="lower", lab=T, lab_size = 2.7)
 ```
 
 Nel grafico riportiamo il valore della variabile price (sull'asse delle ordinate) in funzione del salario orario della manodopera (sull'asse delle ascisse), colorando i punti in base alla regione di appartenenza. L'obiettivo era indagare se esistesse una correlazione tra il prezzo e il salario dei lavoratori, variabile al variare delle regioni. Dal grafico emerge la presenza di due gruppi distinti: in uno sembrano concentrarsi salari e prezzi elevati, mentre nell'altro salari e prezzi risultano nettamente inferiori. È importante precisare che, dal dataset non si riesce a motivare la presenza di questi due gruppi così distinti.
 
-```{r}
+```{r, warning=FALSE}
 ggplot(data, aes(x = wage, y = price, color = region)) +
   geom_point() +
   labs(
@@ -140,7 +132,7 @@ ggplot(data, aes(x = wage, y = price, color = region)) +
 ```
 
 Nel grafico osserviamo la relazione tra il prezzo del riso (asse delle ordinate) e il prezzo dei semi (asse delle ascisse). I dati sono stati raggruppati per id e suddivisi per regione, evidenziati da colori differenti in base alla regione, e per ciascun gruppo è stata tracciata una retta di regressione lineare. Da tale analisi emerge che, per ogni variazione unitaria del prezzo dei semi, il corrispondente cambiamento nel prezzo del riso varia a seconda della regione di appartenenza.
-```{r}
+```{r, warning=FALSE}
 ggplot(data, aes(x = pseed, y = price, group = id, color = region)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
@@ -153,7 +145,7 @@ ggplot(data, aes(x = pseed, y = price, group = id, color = region)) +
 ```
 
 Nei grafici seguenti analizziamo se, nelle diverse regioni, vengano coltivate le stesse varietà di riso e in quale misura. Questa analisi risulta particolarmente interessante poiché varietà differenti di riso sono associate a prezzi diversi. Dal grafico si evince che vi sia molta differenza fra le regioni in termini di varietà di riso coltivate e di prezzo a cui queste vengono vendute. 
-```{r}
+```{r, warning=FALSE}
 ggplot(data, aes(x = varieties, y = price, fill = varieties)) +
   geom_boxplot() +
   # Facet per regione, scales="free" permette ad ogni grafico 
@@ -169,7 +161,7 @@ par(mfrow = c(1, 1))
 ```
 
 In questi due grafici si evince l'assenza di una correlazione sia tra la quantità di semi utilizzata e il prezzo del riso, sia tra la dimensione del campo di coltivazione e il prezzo del riso.
-```{r}
+```{r, warning=FALSE}
 ggplot(data, aes(x = size, y = price, color = region)) +
   geom_point() +
   labs(
@@ -195,128 +187,144 @@ ggplot(data, aes(x = seed, y = price, color = varieties)) +
 
 Terminata l'esplorazione del dataset, ci siamo concentrati sul capire quali fossero i fattori più significativi nella determinazione del prezzo del riso per le diverse aziende. In particolare si è utilizzato un modello di regressione lineare a effetti casuali. In questo modello l'attribuzione degli effetti casuali è stata legata alle diverse aziende distinte per ID. Inoltre, per semplicità inizialmente si sono utilizzate solo alcune variabili quali: pseed, purea e wage.
 
-```{r}
+```{r, warning=FALSE}
 model.1<-lmer(price~1 + pseed + purea + wage + (1|id), data=data)
 summary(model.1)
 ```
 Si può notare che nel primo modello le variabili inserite risultino significative tranne per l'intercetta. In quanto sia un prezzo negativo non risulta ragionevole, sia il suo valore di p-value risulta troppo elevato.
 
-Nel blocco di codice seguente sono stati implementati due modelli, entrambi senza intercetta, in linea con le considerazioni precedenti. In particolare, sono state aggiunte ulteriori variabili, tra cui la varieties. Poiché quest'ultima è di tipo categorico, è stato eseguito un test AIC per valutare se la sua inclusione migliorasse il modello o meno. Il test ha evidenziato un miglioramento con la presenza della variabile. Tuttavia, nel summary si osserva che il p-value associato agli effetti casuali è molto elevato, indicando che tali effetti non sono statisticamente significativi e dunque da escludere.
+Nel blocco di codice seguente sono stati implementati due modelli, entrambi senza intercetta, in linea con le considerazioni precedenti. In particolare, sono state aggiunte ulteriori variabili, tra cui la varieties. Poiché quest'ultima è di tipo categorico, è stato eseguito un test AIC per valutare se la sua inclusione migliorasse il modello o meno. Il test ha evidenziato un miglioramento con la presenza della variabile. Tuttavia, utilizzando la funzione **ranova** si osserva che il p-value associato agli effetti casuali è molto elevato, indicando che tali effetti non sono statisticamente significativi e dunque da escludere.
 
-```{r}
+```{r, warning=FALSE}
 print("-----Model 2-----")
-model.2<-lmer(price~0 + pseed + purea + wage +varieties + bimas + (1|id), data=data)
+model.2<-lmer(price~0 + pseed + purea + wage +varieties + bimas + (1|id), 
+              data=data)
 model.2B<-lmer(price~0 + pseed + purea + wage + bimas + (1|id), data=data)
 AIC(model.2, model.2B)
 summary(model.2)
 ranova(model.2)
 ```
 
+
 ## Effetti casuali sulla variabile region
-```{r}
+
+Nel seguente paragrafo si è scelto di considerare un modello che includa gli effetti casuali non a livello delle singole aziende (indicate da un ID), bensì a livello regionale. Le motivazioni di questa scelta sono diverse. Anzitutto, il modello precedente ha evidenziato che gli effetti casuali associati alla variabile ID non risultavano significativi. Inoltre, osservando il grafico a dispersione pseed-price, emerge un cambiamento nel comportamento dei prezzi più marcato al variare della regione piuttosto che dell'azienda.
+Questo fenomeno potrebbe essere attribuito al fatto che i distributori, o più in generale i mercati a cui i produttori si rivolgono, tendono ad essere simili all'interno della stessa regione. Un altro possibile fattore è rappresentato dalle differenze climatiche tra regioni, che possono influenzare la produzione e la domanda. Anche stili di vita diversi potrebbero incidere, portando a variazioni nei consumi del prodotto in questione da una regione all’altra.
+Va tuttavia sottolineato che queste considerazioni restano speculative, e per confermare tali ipotesi sarebbero necessari ulteriori dati. In ogni caso, si è proceduto alla costruzione di un modello che consideri gli effetti casuali in funzione della regione. A tal fine è stata creata una variabile denominata regioni_id, che codifica il nome della regione mediante un numero.
+
+```{r, warning=FALSE}
 regioni_id <- unique(data$region)
 regione_mappa <- setNames(seq_along(regioni_id), regioni_id)
 
 data_2 <- data %>%
   mutate(Regione_id = recode(region, !!!regione_mappa))
-#data_2$Regione_id = as.factor(data_2$Regione_id)
+
 attach(data_2)
 head(data_2)
 ```
 
-```{r}
+Successivamente sono state effettuate diverse prove al fine di individuare il modello più adeguato. Di seguito riportiamo i due risultati migliori: il primo modello (model.2B) include la variabile varieties, mentre il secondo (model.2B_2) ne è privo.
+
+Il confronto tra i due modelli tramite il criterio AIC evidenzia una migliore performance per model.2B. Questo conferma quanto visto nel grafico **Boxplot dei Prezzi per Varietà per Regione**, in cui si nota una forte variazione del prezzo in relazone al tipo di varietà di riso coltivato al variare della regione considerata. Inoltre, dal test ranova effettuato su questo modello mostra che gli effetti casuali associati alla variabile Regione_id sono statisticamente significativi, avvalorando almeno in parte le considerazioni precedentemente formulate.
+
+```{r, warning=FALSE}
 print("-----Model 2 BIS-----")
-model.2B<-lmer(price~0 + pseed + purea + wage + varieties + bimas + pesticide + urea + phosphate  + (1|Regione_id), data=data_2)
-model.2B_2<-lmer(price~0 + pseed + purea + wage +bimas+ pesticide + urea + phosphate + (1|Regione_id), data=data_2)
-AIC(model.2B, model.2B_2) # Il modello con la variabile varieties ha un AIC migliore
+model.2B<-lmer(price~0 + pseed + purea + wage + varieties + bimas + pesticide + 
+                 urea + phosphate  + (1|Regione_id), data=data_2)
+model.2B_2<-lmer(price~0 + pseed + purea + wage +bimas+ pesticide + urea + 
+                   phosphate + (1|Regione_id), data=data_2)
+ # Il modello con la variabile varieties ha un AIC migliore
+AIC(model.2B, model.2B_2)
 summary(model.2B)
 ranova(model.2B)
 ```
 
+Si è deciso di testare una delle ipotesi basilari relativa al modello a effetti casuali utilizzato precedentemente, in cui si assume la normalità dei residui. Nel seguente grafico possiamo osservare l'istogramma creato a partire dai residui trovati.
+```{r, warning=FALSE}
+res_lmr=residuals(model.2B)
+ggplot(data.frame(res_lmr), aes(x = res_lmr)) +
+  geom_histogram(binwidth = 3, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
+```
+Infine si è deciso di verificare questa ipotesi mediante l'utilizzo della funzione shapiro.tes, il cui risultato ci indica se questa distribuzione è normale o meno. In questo caso il p-value trovato è molto piccolo, per cui si deve rigettare fortemente. 
+```{r, warning=FALSE}
+par(mfrow=c(1,2))
+
+qqnorm(res_lmr)
+qqline(res_lmr, col = "red")
+
+shapiro.test(res_lmr)
+```
+
+
 # GAMLSS
 
-```{r}
-mod_ga<- gamlss(price~ 1+ pseed + purea + wage + varieties + bimas + pesticide + goutput + noutput + (1|Regione_id), family = GA, data =data_2)
+In questo paragrafo è stata utilizzata la funzione gamlss, che permette di adottare distribuzioni di probabilità diverse rispetto alla normale, impiegata di default nei modelli precedenti. La scelta è motivata dai seguenti elementi:
+
+-L'analisi del Q-Q plot e il test di Shapiro-Wilk evidenziano che l'ipotesi di normalità dei residui non è soddisfatta.
+- L'utilizzo di una distribuzione con supporto sull'intera retta reale non è coerente con la natura della variabile risposta, ovvero il prezzo del riso, che può assumere solo valori reali positivi.
+
+Per queste ragioni, si è optato per distribuzioni con supporto positivo, in grado di meglio rappresentare anche la presenza di code pesanti evidenziate dall'istogramma del prezzo analizzato all'inizio della trattazione.
+
+I modelli presentati di seguito sono stati costruiti utilizzando le stesse variabili esplicative impiegate nei modelli precedenti, ma includono l'intercetta, che in questo caso risulta significativa. In particolare, sono stati considerati due modelli che adottano, rispettivamente, la distribuzione Gamma e quella log-normale per la variabile di risposta.
+
+```{r, warning=FALSE}
+print('Gamma')
+mod_ga <- gamlss(price~ 1 + pseed + goutput + noutput  + pphosph + varieties + 
+                   bimas, random = ~1 | Regione_id, family = GA, data =data_2)
 summary(mod_ga)
-res=residuals(mod_ga)
-```
-
-```{r}
-res=residuals(mod_ga)
-ggplot(data.frame(res), aes(x = res)) +
-  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
-  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
-```
-
-
-
-```{r}
-par(mfrow=c(1,2))
-
-qqnorm(res)
-qqline(res, col = "red")
-
-shapiro.test(res)
-```
-
-
-```{r}
-mod_bis_ga <- gamlss(price ~ 1 + pseed + goutput + noutput  + pphosph + varieties + bimas, random = ~1 | region,family = GA, data = data_2)
-mod_bis_ga_2 <- gamlss(price ~ 1 + pseed + goutput + noutput  + pphosph + bimas, random = ~1 | region,family = GA, data = data_2)
-AIC(mod_bis_ga,mod_bis_ga_2) # Il modello con varieties è migliore
-summary(mod_ga)
-```
-```{r}
-res_ga=residuals(mod_bis_ga)
-ggplot(data.frame(res_ga), aes(x = res_ga)) +
-  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
-  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
-```
-```{r}
-par(mfrow=c(1,2))
-
-qqnorm(res_ga)
-qqline(res_ga, col = "red")
-
-shapiro.test(res_ga)
-```
-
-
-
-```{r}
-mod_logno <- gamlss(price ~ 1 + pseed + goutput + noutput  + pphosph + varieties + bimas, random = ~1 | region,family = LOGNO, data = data_2)
-a=AIC(mod_bis_ga,mod_logno)
-b=BIC(mod_bis_ga,mod_logno)
-plot(mod_bis_ga, which = 1, main = "Gamma - Residui normalizzati")
-plot(mod_logno, which = 1, main = "LOGNO - Residui normalizzati")
-cbind(a[2],b[2])
-print("mod_bis_ga")
-summary(mod_bis_ga)
-print("mod_logno")
+print('Log Normal')
+mod_logno <- gamlss(price~ 1 + pseed + goutput + noutput  + pphosph + 
+                      varieties + bimas, random = ~1 | Regione_id, 
+                    family = LOGNO, data =data_2)
 summary(mod_logno)
 ```
 
-
-
-```{r}
-res_logno=residuals(mod_logno)
-ggplot(data.frame(res_logno), aes(x = res_logno)) +
-  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
-  labs(title = "Istogramma dei residui", x = "Residui", y = "Frequenza")
+Per confrontare l'efficacia dei due modelli è stato utilizzato il criterio di selezione AIC. I risultati indicano che il modello basato sulla distribuzione log-normale offre una migliore capacità predittiva rispetto a quello che utilizza la distribuzione Gamma.
+```{r, warning=FALSE}
+AIC(mod_ga, mod_logno)
 ```
 
+Di seguito vengono riportati i summary dei modelli appena stimati rispetto alla variabile price. Si può osservare come, in entrambi i casi, i valori predetti risultino prossimi ai valori osservati, indicando una buona capacità descrittiva da parte di entrambi i modelli.
+```{r, warning=FALSE}
+summary(fitted(mod_ga))
+exp(summary(fitted(mod_logno)))
+summary(data_2$price)
+```
+Infine, si è proceduti con il visualizzare il plot di entrambi i modelli, in modo da poter visualizzare diversi grafici riassuntivi.
+- **Against Fitted Value**: Si nota ancora dell'eteroschedasticità per entrambi i modelli, seppur il modello log-nomale suggerisce un fit migliore rispetto al modello utilizzante la gamma.
+- Against index: Mostra un andamento casuale, senza trend crescenti o decrescenti, suggerendo che non vi siano correlazione nei residui per entrambi i modelli.
+- **Density Estimate**: Per entrambi i modelli la curva appare visibilmente simmetrica e concentrata attorno a zero, ciò indica che i residui non presentano code eccessive o asimmetrie marcate. Possiamo osservare che le distribuzioni ottenute siano sufficientemente vicine a una distribuzione normale.
+- **Normal Q-Q Plot**: confronta i quantili empirici dei residui con i quantili teorici di una distribuzione normale. L'allineamento vicino alla diagonale in rosso segnala che i residui si distribuiscono in modo piuttosto simile a una normale. Eventuali deviazioni si notano soprattutto nelle code, dove i residui possono discostarsi dalla normalità perfetta.
 
 
-```{r}
-par(mfrow=c(1,2))
-
-qqnorm(res_logno)
-qqline(res_logno, col = "red")
-
-shapiro.test(res_logno)
+```{r, warning=FALSE}
+plot(mod_ga, which = 1, main = "Gamma - Residui normalizzati")
+plot(mod_logno, which = 1, main = "LOGNO - Residui normalizzati")
 ```
 
+Di seguito vengono analizzati i coefficienti ricavati dal  fit modello log-normale e tratte alcune considerazione su di essi:
+
+- **Intercept**: Il termine costante rappresenta il valore base, su scala logaritmica, del prezzo quando tutte le variabili esplicative sono uguali a zero. Esponenziando questo valore si ottiene il prezzo di riferimento attorno a exp(2.787) $\approx$ 16.23 Rupiah/kg, che costituisce il punto di partenza per la valutazione degli effetti delle altre variabili.
+
+- **pseed**: Il coefficiente relativo al prezzo del seme indica che per ogni aumento di 1 unità nel prezzo del seme, il prezzo del riso aumenta di un fattore pari a exp(0.00303) $\approx$ 1.00303, ovvero circa lo 0.3%. Ciò suggerisce un effetto positivo, sebbene moderato, del costo del seme sul prezzo finale del riso.
+
+- **goutput**: Per il parametro della produzione lorda, il coefficiente negativo implica che un incremento unitario della produzione lorda è associato a una leggera diminuzione del prezzo (exp(-0.0002986) $\approx$ 0.99970, ossia circa uno 0.03% in diminuzione per unità aumentata). Questo risultato potrebbe riflettere un effetto di scala dove maggiori quantità prodotte portano a una riduzione dei prezzi, anche se l'effetto è molto contenuto.
+
+- **noutput**: Al contrario, l'effetto della produzione netta risulta positivo: ogni unità aggiuntiva di noutput è associata a un incremento del prezzo pari a exp(0.0003678) $\approx$ 1.00037, cioè circa lo 0.04% in aumento. Nonostante l'impatto per unità sia piccolo, il segno positivo indica che una produzione netta maggiore tende a far crescere il prezzo, suggerendo che la redditività (al netto dei costi di raccolto) è un fattore rilevante.
+
+- **pphosph**: Il coefficiente relativo al prezzo del fosfato è positivo: un aumento di 1 unità in pphosph comporta un incremento del prezzo del riso di circa exp(0.01688) $\approx$ 1.0170, ossia circa l’1.7%. Questo indica che costi maggiori del fosfato si riflettono in un aumento del prezzo del riso, probabilmente per l'aumento dei costi di input generali.
+
+- **varietieshigh**: Per la variabile indicante le varietà ad alta resa, il coefficiente negativo indica un effetto riduttivo sul prezzo. Infatti, rispetto alla categoria di riferimento (varietà tradizionali), l'adozione di varietà ad alta resa è associata a un prezzo inferiore pari a exp(-0.1512) $\approx$ 0.86, cioè una diminuzione di circa il 14%. Questo potrebbe essere correlato alla maggiore produttività e quindi una diminuzione del prezzo del riso rispetto all'altra varietà presa come riferimento.
+
+- **varietiesmixed**: Nel caso delle varietà miste il coefficiente, pur essendo negativo, è meno marcato exp(-0.05549) $\approx$ 0.946, ossia una diminuzione di circa il 5.4%. L'effetto risulta meno robusto, ma comunque indica una tendenza a ridurre il prezzo rispetto alla categoria di riferimento (varietà tradizionali).
+
+- **bimasyes**: Per la partecipazione al programma BIMAS, il coefficiente negativo indica che le aziende che partecipano al programma presentano un prezzo del riso inferiore, pari a exp(-0.05695) $\approx$ 0.9446, ovvero una diminuzione di circa il 5.5%. Ciò potrebbe suggerire che l'adesione al programma si associa a una maggiore efficienza o a costi ridotti, traducendosi in un prezzo più contenuto, rispetto al non partecipare al progetto.
+
+- **bimasmixed**: Infine, il coefficiente per la categoria "mixed" all'interno del programma BIMAS è anch'esso negativo e significativamente più pronunciato (exp(-0.1263) $\approx$ 0.881, ossia una riduzione di circa il 12%). Questo indica un effetto più marcato rispetto alla partecipazione completa: un coinvolgimento parziale nel programma sembra portare a una riduzione più consistente del prezzo del riso. Questo risultato sembra in contro tendenza a quanto ci si potrebbe aspettare.
+
+In sintesi, i coefficienti mostrano come, alcune variabili relative ai costi (come pseed e pphosph) abbiano un effetto di incremento positivo sul prezzo, mentre variabili legate alla produzione (come goutput) o alla tipologia di riso e alla partecipazione a programmi come il BIMAS, abbiano effetti riduttivi sul price, suggerendo potenzialmente economie di scala o vantaggi competitivi in termini di efficienza produttiva.
 
 
 # Conclusioni
-
+I modelli sviluppati evidenziano come alcuni costi di produzione, ad esempio il prezzo dei semi e del fosfato, esercitino un effetto positivo sull'aumento del prezzo del riso, mentre variabili legate alla produzione (in particolare la produzione lorda) e elementi qualitativi come la tipologia di varietà e la partecipazione al programma BIMAS comportino una riduzione del prezzo. L'adozione della distribuzione log-normale ha permesso di affrontare in maniera più appropriata la natura asimmetrica della variabile prezzo, garantendo una migliore capacità predittiva e descrittiva del modello. In particolare, l'inclusione di effetti casuali a livello regionale si è rivelata fondamentale: a differenza dell'approccio che impiegava effetti casuali a livello di singola azienda. Il modello con effetti casuali per la variabile regione ha permesso di catturare in maniera più efficace le differenze dovute a fattori territoriali. Ciò sottolinea l'importanza di adottare strutture a effetti misti, che consentono di modellare in modo adeguato la variabilità intrinseca dei dati, migliorando sia la precisione delle stime che la robustezza generale del modello.
